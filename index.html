@@ -32,7 +32,7 @@ input[type=text], input[type=password] { width:100%; border:1px solid var(--bord
 .cand .nm { font-weight:700; color:var(--navy-dark); }
 .cand .ad { font-size:.78rem; color:var(--text-sub); margin-top:2px; }
 .score-wrap { display:flex; align-items:center; gap:18px; }
-.score-num { font-size:3rem; font-weight:800; color:var(--navy-dark); line-height:1; }
+.score-num { font-size:3rem; font-weight:800; color:var(--navy-dark); line-height:1; white-space:nowrap; }
 .score-num small { font-size:1rem; color:var(--text-sub); font-weight:700; }
 .grade { font-size:1.05rem; font-weight:800; color:var(--navy); }
 table { width:100%; border-collapse:collapse; font-size:.86rem; }
@@ -165,12 +165,21 @@ function fetchCompetitors(place) {
   placesService.nearbySearch({ location: place.geometry.location, radius: 800, keyword: kw }, (results, status) => {
     let comps = [];
     if(status === 'OK' && results) {
-      comps = results.filter(r => r.place_id !== place.place_id).slice(0, 12).map(r => ({
-        name: r.name || "", rating: (typeof r.rating === 'number') ? r.rating : null,
+      comps = results.filter(r => r.place_id !== place.place_id).map(r => ({
+        place_id: r.place_id, name: r.name || "", rating: (typeof r.rating === 'number') ? r.rating : null,
         reviews: r.user_ratings_total || 0, photos: (r.photos && r.photos.length) ? r.photos.length : 0
       }));
       comps.sort((a, b) => b.reviews - a.reviews);
       comps = comps.slice(0, 5);
+      let pending = comps.length;
+      if(!pending) { renderReport(currentShop, comps, kw); return; }
+      comps.forEach(c => {
+        placesService.getDetails({ placeId: c.place_id, fields: ['photos'] }, (d, st) => {
+          if(st === 'OK' && d && d.photos) c.photos = d.photos.length;
+          if(--pending === 0) renderReport(currentShop, comps, kw);
+        });
+      });
+      return;
     }
     renderReport(currentShop, comps, kw);
   });
@@ -186,7 +195,7 @@ function scoreOf(shop, comps) {
   const maxReviews = Math.max(1, ...comps.map(c => c.reviews), shop.reviews);
   const sRating = shop.rating ? (shop.rating / 5) * 35 : 0;
   const sReviews = Math.min(shop.reviews / maxReviews, 1) * 30;
-  const sPhotos = Math.min(shop.photos / 20, 1) * 20;
+  const sPhotos = Math.min(shop.photos / 10, 1) * 20;
   let infoCount = 0; if(shop.hasWeb) infoCount++; if(shop.hasTel) infoCount++; if(shop.hasHours) infoCount++; if(shop.address) infoCount++;
   const sInfo = (infoCount / 4) * 15;
   return { total: Math.round(sRating + sReviews + sPhotos + sInfo), sRating, sReviews, sPhotos, sInfo, maxReviews };
@@ -204,7 +213,7 @@ function makePoints(shop, comps) {
     if(shop.rating && avgRate && shop.rating < avgRate) pts.push({ t: `評価は★${shop.rating.toFixed(1)}で、競合平均（★${avgRate.toFixed(1)}）より低めです。低評価の口コミへの返信から始めると印象が変わります。`, good: false });
     if(shop.rating && shop.rating >= 4.2) pts.push({ t: `評価は★${shop.rating.toFixed(1)}と高水準です。この強みを投稿や写真でも見せていきましょう。`, good: true });
   }
-  if(shop.photos < 10) pts.push({ t: `写真は${shop.photos}枚です。店内・外観・メニューなど20枚以上ある店の方が、見た目で選ばれやすくなります。`, good: false });
+  if(shop.photos < 10) pts.push({ t: `写真は${shop.photos}枚です。店内・外観・メニューなど、写真の多い店の方が見た目で選ばれやすくなります。`, good: false });
   else pts.push({ t: `写真は${shop.photos}枚そろっています。新しい写真を定期的に足すと鮮度が保てます。`, good: true });
   if(!shop.hasWeb) pts.push({ t: "ウェブサイトが未登録です。予約ページやSNSでもよいので登録しましょう。", good: false });
   if(!shop.hasHours) pts.push({ t: "営業時間が未登録です。営業時間が出ていないと、来店の判断材料が欠けてしまいます。", good: false });
