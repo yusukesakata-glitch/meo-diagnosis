@@ -53,12 +53,13 @@ ul.points li.good::before { background:var(--blue); }
 .err { background:#fdecec; color:#a33; border-radius:10px; padding:12px; font-size:.85rem; line-height:1.6; }
 .demo-tag { display:inline-block; background:var(--gold); color:#fff; font-size:.72rem; font-weight:800; border-radius:99px; padding:3px 10px; margin-bottom:8px; }
 .actions { display:flex; gap:8px; flex-wrap:wrap; }
-@media print { .noprint { display:none !important; } body { background:#fff; padding:0; } .card { box-shadow:none; border:1px solid var(--border); } }
+@page { size: A4; margin: 10mm; }
+@media print { .noprint { display:none !important; } body { background:#fff; padding:0; font-size:12px; } .card { box-shadow:none; border:1px solid var(--border); padding:12px 14px; margin-bottom:10px; } .score-num { font-size:2.1rem; } #gmap { height:130px !important; } ul.points li { padding:5px 0 5px 22px; font-size:.8rem; } ul.points li::before { top:10px; } table { font-size:.8rem; } .metric { margin-bottom:8px; } }
 .pac-container { border-radius: 12px; font-family: inherit; z-index: 9999; margin-top: 4px; }
 </style>
 </head>
 <body>
-<header>
+<header class="noprint">
   <img src="logo-mark.png" alt="">
   <h1>MEO診断</h1>
   <div class="spacer"></div>
@@ -166,7 +167,7 @@ function renderNotFound(name, area) {
       <p>・店名欄に住所を入れて探すこともできます</p>
     </div>
     <p style="font-size:.92rem; line-height:1.8; margin-top:12px; background:var(--blue-bg); border-radius:12px; padding:12px 14px;">未登録であれば、まず登録するところからが提案になります（初期設定パックの対象です）。</p>
-  </div>`;
+  </div>` + serviceBlock();
   document.getElementById('report').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -267,6 +268,32 @@ function makePoints(shop, comps) {
 
 function esc(s) { return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
 
+function serviceBlock() {
+  return `<div class="card">
+    <div style="font-weight:800; color:var(--navy-dark); margin-bottom:6px;">ご提案（MEO初期設定サービス）</div>
+    <table>
+      <tr><th>プラン</th><th>料金</th><th>内容</th></tr>
+      <tr><td>初期設定パック</td><td>10,000円（買い切り）</td><td>Googleビジネスプロフィールの登録・基本情報・初期写真・初期投稿</td></tr>
+      <tr><td>ライト</td><td>14,800円/月</td><td>口コミ返信・投稿 月2回・月次レポート</td></tr>
+      <tr><td>スタンダード</td><td>24,800円/月</td><td>口コミ獲得の仕掛け・写真追加・競合比較つきレポート</td></tr>
+    </table>
+    <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:12px; font-size:.82rem; color:var(--text-sub);">
+      <span>株式会社リクルーティング・ノーツ・コミュニケーションズ</span><span>担当：＿＿＿＿＿＿＿＿</span>
+    </div>
+    <div style="font-size:.72rem; color:var(--text-sub); margin-top:6px;">※MEOスコアはGoogleの公開情報から自動計算した目安です（Google公式の指標ではありません）。</div>
+  </div>`;
+}
+
+function proposalItems(shop, comps) {
+  const items = [];
+  if(!shop.hasWeb || !shop.hasHours || !shop.hasTel) items.push("基本情報を整える：不足している項目（営業時間・電話番号・サイトなど）を埋め、土台を整えます");
+  if(shop.photos < 10) items.push("写真を充実させる：店内・外観・メニューなどの写真を増やし、見た目で選ばれる状態にします");
+  const avgR = comps.length ? comps.reduce((a, c) => a + c.reviews, 0) / comps.length : 0;
+  if(shop.rating === null || shop.reviews < avgR) items.push("口コミを育てる：店頭QRなどで口コミを集める導線を作り、返信対応で評価を積み上げます");
+  if(items.length < 3) items.push("最新情報を投稿し続ける：イベントや営業情報を定期的に投稿して、情報の鮮度を保ちます");
+  return items.slice(0, 3);
+}
+
 function renderReport(shop, comps, kw, demo) {
   const sc = scoreOf(shop, comps);
   const pts = makePoints(shop, comps);
@@ -298,6 +325,11 @@ function renderReport(shop, comps, kw, demo) {
     <div style="font-weight:800; color:var(--navy-dark); margin-bottom:4px;">改善ポイント</div>
     <ul class="points">${pts.map(p => `<li class="${p.good ? 'good' : ''}">${esc(p.t)}</li>`).join("")}</ul>
   </div>
+  <div class="card">
+    <div style="font-weight:800; color:var(--navy-dark); margin-bottom:4px;">この店へのご提案</div>
+    <ul class="points">${proposalItems(shop, comps).map(t => `<li>${esc(t)}</li>`).join("")}</ul>
+  </div>
+  ${serviceBlock()}
   <div class="actions noprint" style="margin-bottom:20px;">
     <button class="btn gold" onclick="window.print()">このレポートを印刷・保存</button>
   </div>`;
