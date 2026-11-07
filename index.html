@@ -54,6 +54,7 @@ ul.points li.good::before { background:var(--blue); }
 .demo-tag { display:inline-block; background:var(--gold); color:#fff; font-size:.72rem; font-weight:800; border-radius:99px; padding:3px 10px; margin-bottom:8px; }
 .actions { display:flex; gap:8px; flex-wrap:wrap; }
 @media print { .noprint { display:none !important; } body { background:#fff; padding:0; } .card { box-shadow:none; border:1px solid var(--border); } }
+.pac-container { border-radius: 12px; font-family: inherit; z-index: 9999; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -74,18 +75,15 @@ ul.points li.good::before { background:var(--blue); }
 </div>
 
 <div class="card noprint">
-  <label>店名</label>
-  <input type="text" id="shopName" placeholder="例：カフェ サンプル">
-  <div style="height:10px"></div>
-  <label>エリア（駅名・市区町村など）</label>
+  <label>店を検索</label>
   <div class="row">
-    <input type="text" id="shopArea" placeholder="例：新橋">
+    <input type="text" id="shopQuery" placeholder="店名・住所を入力">
     <button class="btn" id="searchBtn" onclick="searchShop()">診断する</button>
   </div>
+  <div class="hint">入力するとGoogleマップのように候補が出ます。候補を選ぶとそのまま診断します。候補に出ない店は「診断する」を押して探せます。</div>
   <div style="height:10px"></div>
   <label>競合キーワード（空欄なら業種から自動）</label>
   <input type="text" id="kwInput" placeholder="例：ガールズバー、美容室、居酒屋">
-  <div class="hint">店を選ぶと、Googleの評価・口コミ・写真と、近くの競合との比較レポートが出ます。</div>
   <div style="margin-top:10px;" class="actions">
     <button class="btn sub" onclick="runDemo()">デモで見てみる</button>
   </div>
@@ -115,6 +113,11 @@ async function initApi() {
   if(window.google && google.maps && google.maps.places) {
     placesService = new google.maps.places.PlacesService(document.getElementById('mapDummy'));
     apiReady = true;
+    const qInput = document.getElementById('shopQuery');
+    if(qInput && google.maps.places.Autocomplete) {
+      const ac = new google.maps.places.Autocomplete(qInput, { fields: ['place_id'], types: ['establishment'] });
+      ac.addListener('place_changed', () => { const p = ac.getPlace(); if(p && p.place_id) pickShop(p.place_id); });
+    }
   }
 }
 initApi();
@@ -124,12 +127,12 @@ function similarName(a, b) { const x = normStr(a), y = normStr(b); return !!x &&
 
 function searchShop() {
   clearErr();
-  const name = document.getElementById('shopName').value.trim();
-  const area = document.getElementById('shopArea').value.trim();
+  const name = document.getElementById('shopQuery').value.trim();
+  const area = "";
   if(!name) { showErr("店名を入れてください。"); return; }
   if(!apiReady) { showErr("APIキーが読み込めていません。右上の「APIキー設定」からキーを保存してください。"); return; }
   const btn = document.getElementById('searchBtn'); btn.disabled = true; btn.textContent = "検索中…";
-  document.getElementById('reportArea').innerHTML = "";
+  document.getElementById('report').innerHTML = "";
   document.getElementById('candArea').innerHTML = "";
   const q = `${name} ${area}`;
   const found = new Map();
@@ -154,7 +157,7 @@ function searchShop() {
 }
 
 function renderNotFound(name, area) {
-  document.getElementById('reportArea').innerHTML = `<div class="card">
+  document.getElementById('report').innerHTML = `<div class="card">
     <div style="font-size:1.25rem; font-weight:800; color:var(--navy-dark); margin-bottom:8px;">Googleマップで見つかりませんでした</div>
     <p style="font-size:.92rem; line-height:1.8;">「${esc(name)}」${area ? `（${esc(area)}）` : ""}に一致する店は、Googleの公開情報に見つかりませんでした。</p>
     <div style="font-size:.9rem; line-height:1.9; margin-top:8px;">
@@ -164,7 +167,7 @@ function renderNotFound(name, area) {
     </div>
     <p style="font-size:.92rem; line-height:1.8; margin-top:12px; background:var(--blue-bg); border-radius:12px; padding:12px 14px;">未登録であれば、まず登録するところからが提案になります（初期設定パックの対象です）。</p>
   </div>`;
-  document.getElementById('reportArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('report').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function pickShop(placeId) {
@@ -203,7 +206,9 @@ function fetchCompetitors(place) {
       if(myTypes.length) results = results.filter(r => (r.types || []).some(t => myTypes.includes(t)));
       comps = results.filter(r => r.place_id !== place.place_id).map(r => ({
         place_id: r.place_id, name: r.name || "", rating: (typeof r.rating === 'number') ? r.rating : null,
-        reviews: r.user_ratings_total || 0, photos: (r.photos && r.photos.length) ? r.photos.length : 0
+        reviews: r.user_ratings_total || 0, photos: (r.photos && r.photos.length) ? r.photos.length : 0,
+        lat: r.geometry && r.geometry.location ? r.geometry.location.lat() : null,
+        lng: r.geometry && r.geometry.location ? r.geometry.location.lng() : null
       }));
       comps.sort((a, b) => b.reviews - a.reviews);
       comps = comps.slice(0, 5);
@@ -274,6 +279,7 @@ function renderReport(shop, comps, kw, demo) {
     ${demo ? '<span class="demo-tag">デモ表示（架空の数値です）</span>' : ""}
     <div style="font-size:1.1rem; font-weight:800; color:var(--navy-dark);">${esc(shop.name)}</div>
     <div class="kv"><span>${esc(shop.address)}</span>${shop.url ? `<span><a href="${shop.url}" target="_blank" rel="noopener">Googleマップで見る</a></span>` : ""}</div>
+    ${shop.lat ? '<div style="height:12px"></div><div id="gmap" style="height:240px; border-radius:14px; overflow:hidden;"></div>' : ""}
     <div style="height:12px"></div>
     <div class="score-wrap">
       <div class="score-num">${sc.total}<small> / 100</small></div>
@@ -296,6 +302,19 @@ function renderReport(shop, comps, kw, demo) {
     <button class="btn gold" onclick="window.print()">このレポートを印刷・保存</button>
   </div>`;
   document.getElementById('report').scrollIntoView({ behavior: 'smooth' });
+  drawMap(shop, comps);
+}
+
+function drawMap(shop, comps) {
+  const el = document.getElementById('gmap');
+  if(!el || !shop.lat || !window.google || !google.maps) return;
+  const center = { lat: shop.lat, lng: shop.lng };
+  const map = new google.maps.Map(el, { center, zoom: 16, disableDefaultUI: true, zoomControl: true, gestureHandling: "greedy" });
+  const bounds = new google.maps.LatLngBounds();
+  bounds.extend(center);
+  new google.maps.Marker({ position: center, map, title: shop.name });
+  (comps || []).forEach(c => { if(c.lat) { const pos = { lat: c.lat, lng: c.lng }; bounds.extend(pos); new google.maps.Marker({ position: pos, map, title: c.name, opacity: 0.5 }); } });
+  if((comps || []).some(c => c.lat)) map.fitBounds(bounds);
 }
 
 function removeComp(i) { currentComps.splice(i, 1); renderReport(currentShop, currentComps, currentKw); }
