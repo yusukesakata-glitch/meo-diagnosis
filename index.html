@@ -130,22 +130,27 @@ function searchShop() {
   if(!apiReady) { showErr("APIキーが読み込めていません。右上の「APIキー設定」からキーを保存してください。"); return; }
   const btn = document.getElementById('searchBtn'); btn.disabled = true; btn.textContent = "検索中…";
   document.getElementById('reportArea').innerHTML = "";
+  document.getElementById('candArea').innerHTML = "";
   const q = `${name} ${area}`;
   const found = new Map();
-  const collect = (results) => (results || []).forEach(r => { if(r.place_id && !found.has(r.place_id)) found.set(r.place_id, r); });
+  const collect = (results) => { try { (results || []).forEach(r => { if(r.place_id && !found.has(r.place_id)) found.set(r.place_id, r); }); } catch(e) {} };
+  let done = false;
   const finish = () => {
+    if(done) return; done = true;
     btn.disabled = false; btn.textContent = "診断する";
     const list = [...found.values()];
-    list.sort((a, b) => (similarName(b.name, name) - similarName(a.name, name)) || ((b.user_ratings_total || 0) - (a.user_ratings_total || 0)));
+    list.sort((a, b) => ((similarName(b.name, name) ? 1 : 0) - (similarName(a.name, name) ? 1 : 0)) || ((b.user_ratings_total || 0) - (a.user_ratings_total || 0)));
     const area2 = document.getElementById('candArea');
-    if(!list.length) { area2.innerHTML = ""; renderNotFound(name, area); return; }
+    if(!list.length) { renderNotFound(name, area); return; }
+    const safeName = name.replace(/['"<>&]/g, ""), safeArea = area.replace(/['"<>&]/g, "");
     area2.innerHTML = list.slice(0, 12).map(r => `<div class="cand" onclick="pickShop('${r.place_id}')"><div class="nm">${esc(r.name)}</div><div class="ad">${esc(r.formatted_address || "")}</div></div>`).join("")
-      + `<div style="text-align:center; margin-top:10px;" class="noprint"><button class="noprint" onclick="renderNotFound('${esc(name).replace(/'/g, "")}', '${esc(area).replace(/'/g, "")}')" style="border:1px solid var(--border); background:#fff; color:var(--text-sub); border-radius:99px; font-size:.78rem; padding:7px 14px; cursor:pointer;">この中にない（Google未登録かも）</button></div>`;
+      + `<div style="text-align:center; margin-top:10px;" class="noprint"><button class="noprint" onclick="renderNotFound('${safeName}', '${safeArea}')" style="border:1px solid var(--border); background:#fff; color:var(--text-sub); border-radius:99px; font-size:.78rem; padding:7px 14px; cursor:pointer;">この中にない（Google未登録かも）</button></div>`;
   };
-  placesService.findPlaceFromQuery({ query: q, fields: ['place_id', 'name', 'formatted_address'] }, (r1) => {
-    collect(r1);
-    placesService.textSearch({ query: q }, (r2) => { collect(r2); finish(); });
-  });
+  setTimeout(finish, 12000);
+  let pending = 2;
+  const step = () => { if(--pending === 0) finish(); };
+  try { placesService.findPlaceFromQuery({ query: q, fields: ['place_id', 'name', 'formatted_address', 'user_ratings_total'] }, (r1) => { collect(r1); step(); }); } catch(e) { step(); }
+  try { placesService.textSearch({ query: q }, (r2) => { collect(r2); step(); }); } catch(e) { step(); }
 }
 
 function renderNotFound(name, area) {
