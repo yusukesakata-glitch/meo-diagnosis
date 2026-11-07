@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MEO診断</title>
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#25475f">
+<style>
+:root { --navy:#25475f; --navy-dark:#163b5b; --blue:#3868a8; --gold:#d9a94a; --bg:#edf5fc; --panel:#ffffff; --text:#21303d; --text-sub:#71889a; --border:#d8e2ec; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:-apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; background:var(--bg); color:var(--text); padding:14px; max-width:760px; margin:0 auto; }
+header { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+header img { width:52px; height:32px; object-fit:contain; background:#fff; border-radius:6px; }
+header h1 { font-size:1.25rem; color:var(--navy-dark); font-weight:800; letter-spacing:.03em; }
+header .spacer { flex:1; }
+.keybtn { border:1px solid var(--border); background:#fff; color:var(--navy); border-radius:999px; padding:8px 14px; font-size:.8rem; font-weight:700; cursor:pointer; }
+.card { background:var(--panel); border-radius:14px; padding:16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(22,59,91,.06); }
+label { display:block; font-size:.78rem; font-weight:700; color:var(--navy); margin-bottom:6px; }
+input[type=text], input[type=password] { width:100%; border:1px solid var(--border); border-radius:10px; padding:12px; font-size:1rem; background:#fff; color:var(--text); }
+.row { display:flex; gap:8px; }
+.row input { flex:1; }
+.btn { background:var(--navy); color:#fff; border:none; border-radius:999px; padding:12px 22px; font-size:.95rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+.btn.sub { background:#fff; color:var(--navy); border:1px solid var(--border); }
+.btn.gold { background:var(--gold); color:#fff; }
+.btn:disabled { opacity:.5; }
+.hint { font-size:.76rem; color:var(--text-sub); margin-top:8px; line-height:1.6; }
+.cand { border:1px solid var(--border); border-radius:12px; padding:12px; margin-top:8px; cursor:pointer; background:#fff; }
+.cand:active { background:var(--bg); }
+.cand .nm { font-weight:700; color:var(--navy-dark); }
+.cand .ad { font-size:.78rem; color:var(--text-sub); margin-top:2px; }
+.score-wrap { display:flex; align-items:center; gap:18px; }
+.score-num { font-size:3rem; font-weight:800; color:var(--navy-dark); line-height:1; }
+.score-num small { font-size:1rem; color:var(--text-sub); font-weight:700; }
+.grade { font-size:1.05rem; font-weight:800; color:var(--navy); }
+table { width:100%; border-collapse:collapse; font-size:.86rem; }
+th, td { padding:9px 6px; border-bottom:1px solid var(--border); text-align:right; }
+th:first-child, td:first-child { text-align:left; }
+tr.self td { font-weight:800; color:var(--navy-dark); background:#fdf6e3; }
+.bar { height:8px; background:var(--bg); border-radius:99px; overflow:hidden; margin-top:4px; }
+.bar i { display:block; height:100%; background:var(--gold); border-radius:99px; }
+.metric { margin-bottom:12px; }
+.metric .t { display:flex; justify-content:space-between; font-size:.84rem; font-weight:700; color:var(--navy-dark); }
+.metric .t span:last-child { color:var(--text-sub); }
+ul.points { list-style:none; }
+ul.points li { padding:9px 0 9px 22px; position:relative; font-size:.9rem; line-height:1.6; border-bottom:1px solid var(--border); }
+ul.points li:last-child { border-bottom:none; }
+ul.points li::before { content:""; position:absolute; left:2px; top:15px; width:9px; height:9px; border-radius:50%; background:var(--gold); }
+ul.points li.good::before { background:var(--blue); }
+.kv { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:.82rem; color:var(--text-sub); margin-top:6px; }
+.err { background:#fdecec; color:#a33; border-radius:10px; padding:12px; font-size:.85rem; line-height:1.6; }
+.demo-tag { display:inline-block; background:var(--gold); color:#fff; font-size:.72rem; font-weight:800; border-radius:99px; padding:3px 10px; margin-bottom:8px; }
+.actions { display:flex; gap:8px; flex-wrap:wrap; }
+@media print { .noprint { display:none !important; } body { background:#fff; padding:0; } .card { box-shadow:none; border:1px solid var(--border); } }
+</style>
+</head>
+<body>
+<header>
+  <img src="logo-mark.png" alt="">
+  <h1>MEO診断</h1>
+  <div class="spacer"></div>
+  <button class="keybtn noprint" onclick="toggleKey()">APIキー設定</button>
+</header>
+
+<div class="card noprint" id="keyCard" style="display:none;">
+  <label>Google Maps APIキー</label>
+  <div class="row">
+    <input type="password" id="apiKeyInput" placeholder="APIキー">
+    <button class="btn" onclick="saveKey()">保存</button>
+  </div>
+  <div class="hint">顧客マップと同じキーで使えます（同じ端末なら自動で読みます）。Places APIが有効なキーが必要です。</div>
+</div>
+
+<div class="card noprint">
+  <label>店名</label>
+  <input type="text" id="shopName" placeholder="例：カフェ サンプル">
+  <div style="height:10px"></div>
+  <label>エリア（駅名・市区町村など）</label>
+  <div class="row">
+    <input type="text" id="shopArea" placeholder="例：新橋">
+    <button class="btn" id="searchBtn" onclick="searchShop()">診断する</button>
+  </div>
+  <div style="height:10px"></div>
+  <label>競合キーワード（空欄なら業種から自動）</label>
+  <input type="text" id="kwInput" placeholder="例：ガールズバー、美容室、居酒屋">
+  <div class="hint">店を選ぶと、Googleの評価・口コミ・写真と、近くの競合との比較レポートが出ます。</div>
+  <div style="margin-top:10px;" class="actions">
+    <button class="btn sub" onclick="runDemo()">デモで見てみる</button>
+  </div>
+  <div id="candArea"></div>
+  <div id="errArea" style="margin-top:10px;"></div>
+</div>
+
+<div id="report"></div>
+<div id="mapDummy" style="display:none;"></div>
+
+<script>
+let placesService = null, apiReady = false, currentShop = null;
+
+function getKey() { return localStorage.getItem('map_apiKey') || ""; }
+function toggleKey() { const c = document.getElementById('keyCard'); c.style.display = c.style.display === 'none' ? 'block' : 'none'; document.getElementById('apiKeyInput').value = getKey(); }
+function saveKey() { const v = document.getElementById('apiKeyInput').value.trim(); if(v) { localStorage.setItem('map_apiKey', v); location.reload(); } }
+function showErr(msg) { document.getElementById('errArea').innerHTML = `<div class="err">${msg}</div>`; }
+function clearErr() { document.getElementById('errArea').innerHTML = ""; }
+
+async function initApi() {
+  const key = getKey();
+  if(!key) { toggleKey(); return; }
+  if(!document.querySelector('script[data-gmaps]')) {
+    await new Promise((res, rej) => { const s = document.createElement('script'); s.dataset.gmaps = "1"; s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&loading=async&libraries=places,geocoding`; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+  }
+  for(let i = 0; i < 40 && !(window.google && google.maps && google.maps.places); i++) await new Promise(r => setTimeout(r, 200));
+  if(window.google && google.maps && google.maps.places) {
+    placesService = new google.maps.places.PlacesService(document.getElementById('mapDummy'));
+    apiReady = true;
+  }
+}
+initApi();
+
+function searchShop() {
+  clearErr();
+  const name = document.getElementById('shopName').value.trim();
+  const area = document.getElementById('shopArea').value.trim();
+  if(!name) { showErr("店名を入れてください。"); return; }
+  if(!apiReady) { showErr("APIキーが読み込めていません。右上の「APIキー設定」からキーを保存してください。"); return; }
+  const btn = document.getElementById('searchBtn'); btn.disabled = true; btn.textContent = "検索中…";
+  placesService.findPlaceFromQuery({ query: `${name} ${area}`, fields: ['place_id', 'name', 'formatted_address'] }, (results, status) => {
+    btn.disabled = false; btn.textContent = "診断する";
+    if(status !== 'OK' || !results || !results.length) { showErr("店が見つかりませんでした。店名やエリアを変えて試してください。"); return; }
+    const area2 = document.getElementById('candArea');
+    area2.innerHTML = results.slice(0, 5).map(r => `<div class="cand" onclick="pickShop('${r.place_id}')"><div class="nm">${esc(r.name)}</div><div class="ad">${esc(r.formatted_address || "")}</div></div>`).join("");
+  });
+}
+
+function pickShop(placeId) {
+  clearErr();
+  const fields = ['name', 'formatted_address', 'rating', 'user_ratings_total', 'photos', 'opening_hours', 'website', 'formatted_phone_number', 'business_status', 'types', 'url', 'geometry'];
+  placesService.getDetails({ placeId, fields }, (place, status) => {
+    if(status !== 'OK' || !place) { showErr("店の詳細が取れませんでした。"); return; }
+    document.getElementById('candArea').innerHTML = "";
+    currentShop = toShop(place);
+    fetchCompetitors(place);
+  });
+}
+
+function toShop(p) {
+  return {
+    name: p.name || "", address: p.formatted_address || "",
+    rating: (typeof p.rating === 'number') ? p.rating : null,
+    reviews: p.user_ratings_total || 0,
+    photos: (p.photos && p.photos.length) ? p.photos.length : 0,
+    hasHours: !!(p.opening_hours), hasWeb: !!p.website, hasTel: !!p.formatted_phone_number,
+    url: p.url || "", types: p.types || [],
+    lat: p.geometry && p.geometry.location ? p.geometry.location.lat() : null,
+    lng: p.geometry && p.geometry.location ? p.geometry.location.lng() : null
+  };
+}
+
+function fetchCompetitors(place) {
+  const kwManual = document.getElementById('kwInput').value.trim();
+  const kw = kwManual || guessKeyword(place.types || []);
+  if(!kw || !place.geometry || !place.geometry.location) { renderReport(currentShop, [], kw); return; }
+  placesService.nearbySearch({ location: place.geometry.location, radius: 800, keyword: kw }, (results, status) => {
+    let comps = [];
+    if(status === 'OK' && results) {
+      comps = results.filter(r => r.place_id !== place.place_id).slice(0, 12).map(r => ({
+        name: r.name || "", rating: (typeof r.rating === 'number') ? r.rating : null,
+        reviews: r.user_ratings_total || 0, photos: (r.photos && r.photos.length) ? r.photos.length : 0
+      }));
+      comps.sort((a, b) => b.reviews - a.reviews);
+      comps = comps.slice(0, 5);
+    }
+    renderReport(currentShop, comps, kw);
+  });
+}
+
+function guessKeyword(types) {
+  const map = { bar: "バー", night_club: "クラブ", restaurant: "レストラン", cafe: "カフェ", beauty_salon: "美容室", hair_care: "美容室", meal_takeaway: "飲食店", bakery: "パン屋", gym: "ジム", spa: "サロン", store: "店" };
+  for(const t of types) { if(map[t]) return map[t]; }
+  return "";
+}
+
+function scoreOf(shop, comps) {
+  const maxReviews = Math.max(1, ...comps.map(c => c.reviews), shop.reviews);
+  const sRating = shop.rating ? (shop.rating / 5) * 35 : 0;
+  const sReviews = Math.min(shop.reviews / maxReviews, 1) * 30;
+  const sPhotos = Math.min(shop.photos / 20, 1) * 20;
+  let infoCount = 0; if(shop.hasWeb) infoCount++; if(shop.hasTel) infoCount++; if(shop.hasHours) infoCount++; if(shop.address) infoCount++;
+  const sInfo = (infoCount / 4) * 15;
+  return { total: Math.round(sRating + sReviews + sPhotos + sInfo), sRating, sReviews, sPhotos, sInfo, maxReviews };
+}
+
+function gradeOf(total) { return total >= 80 ? "とても良い" : total >= 60 ? "良い" : total >= 40 ? "改善の余地あり" : "要改善"; }
+
+function makePoints(shop, comps) {
+  const pts = [];
+  if(comps.length) {
+    const avgR = comps.reduce((a, c) => a + c.reviews, 0) / comps.length;
+    const avgRate = comps.filter(c => c.rating).reduce((a, c) => a + c.rating, 0) / Math.max(1, comps.filter(c => c.rating).length);
+    if(shop.reviews < avgR) pts.push({ t: `口コミは${shop.reviews}件で、近くの競合平均（約${Math.round(avgR)}件）を下回っています。口コミが増えると、地図検索で選ばれやすくなります。`, good: false });
+    else pts.push({ t: `口コミは${shop.reviews}件で、近くの競合平均（約${Math.round(avgR)}件）を上回っています。`, good: true });
+    if(shop.rating && avgRate && shop.rating < avgRate) pts.push({ t: `評価は★${shop.rating.toFixed(1)}で、競合平均（★${avgRate.toFixed(1)}）より低めです。低評価の口コミへの返信から始めると印象が変わります。`, good: false });
+    if(shop.rating && shop.rating >= 4.2) pts.push({ t: `評価は★${shop.rating.toFixed(1)}と高水準です。この強みを投稿や写真でも見せていきましょう。`, good: true });
+  }
+  if(shop.photos < 10) pts.push({ t: `写真は${shop.photos}枚です。店内・外観・メニューなど20枚以上ある店の方が、見た目で選ばれやすくなります。`, good: false });
+  else pts.push({ t: `写真は${shop.photos}枚そろっています。新しい写真を定期的に足すと鮮度が保てます。`, good: true });
+  if(!shop.hasWeb) pts.push({ t: "ウェブサイトが未登録です。予約ページやSNSでもよいので登録しましょう。", good: false });
+  if(!shop.hasHours) pts.push({ t: "営業時間が未登録です。営業時間が出ていないと、来店の判断材料が欠けてしまいます。", good: false });
+  if(!shop.hasTel) pts.push({ t: "電話番号が未登録です。タップしてすぐ電話できる状態にしましょう。", good: false });
+  if(shop.rating === null) pts.push({ t: "まだ評価が付いていません。最初の口コミを集める仕組みづくりが最優先です。", good: false });
+  return pts;
+}
+
+function esc(s) { return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+function renderReport(shop, comps, kw, demo) {
+  const sc = scoreOf(shop, comps);
+  const pts = makePoints(shop, comps);
+  const rows = [{ ...shop, self: true }, ...comps].map(s => `
+    <tr class="${s.self ? 'self' : ''}"><td>${esc(s.name)}${s.self ? "（この店）" : ""}</td>
+    <td>${s.rating ? "★" + s.rating.toFixed(1) : "—"}</td><td>${s.reviews}件</td><td>${s.photos}枚</td></tr>`).join("");
+  const bar = (v, max) => `<div class="bar"><i style="width:${Math.min(100, max ? (v / max) * 100 : 0)}%"></i></div>`;
+  document.getElementById('report').innerHTML = `
+  <div class="card">
+    ${demo ? '<span class="demo-tag">デモ表示（架空の数値です）</span>' : ""}
+    <div style="font-size:1.1rem; font-weight:800; color:var(--navy-dark);">${esc(shop.name)}</div>
+    <div class="kv"><span>${esc(shop.address)}</span>${shop.url ? `<span><a href="${shop.url}" target="_blank" rel="noopener">Googleマップで見る</a></span>` : ""}</div>
+    <div style="height:12px"></div>
+    <div class="score-wrap">
+      <div class="score-num">${sc.total}<small> / 100</small></div>
+      <div><div class="grade">${gradeOf(sc.total)}</div><div style="font-size:.78rem; color:var(--text-sub); margin-top:4px;">MEOスコア（Googleの公開情報から自動計算）</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="metric"><div class="t"><span>評価 ★${shop.rating ? shop.rating.toFixed(1) : "—"}</span><span>${Math.round(sc.sRating)} / 35点</span></div>${bar(sc.sRating, 35)}</div>
+    <div class="metric"><div class="t"><span>口コミ ${shop.reviews}件</span><span>${Math.round(sc.sReviews)} / 30点</span></div>${bar(sc.sReviews, 30)}</div>
+    <div class="metric"><div class="t"><span>写真 ${shop.photos}枚</span><span>${Math.round(sc.sPhotos)} / 20点</span></div>${bar(sc.sPhotos, 20)}</div>
+    <div class="metric" style="margin-bottom:0;"><div class="t"><span>情報の整備（サイト・電話・営業時間・住所）</span><span>${Math.round(sc.sInfo)} / 15点</span></div>${bar(sc.sInfo, 15)}</div>
+  </div>
+  ${comps.length ? `<div class="card"><div style="font-weight:800; color:var(--navy-dark); margin-bottom:6px;">近くの競合との比較${kw ? `（${esc(kw)}）` : ""}</div>
+    <table><tr><th>店名</th><th>評価</th><th>口コミ</th><th>写真</th></tr>${rows}</table></div>` : ""}
+  <div class="card">
+    <div style="font-weight:800; color:var(--navy-dark); margin-bottom:4px;">改善ポイント</div>
+    <ul class="points">${pts.map(p => `<li class="${p.good ? 'good' : ''}">${esc(p.t)}</li>`).join("")}</ul>
+  </div>
+  <div class="actions noprint" style="margin-bottom:20px;">
+    <button class="btn gold" onclick="window.print()">このレポートを印刷・保存</button>
+  </div>`;
+  document.getElementById('report').scrollIntoView({ behavior: 'smooth' });
+}
+
+function runDemo() {
+  const shop = { name: "カフェ サンプル 新橋店", address: "東京都港区新橋2-0-0", rating: 3.8, reviews: 42, photos: 8, hasHours: true, hasWeb: false, hasTel: true, url: "", types: ["cafe"], lat: null, lng: null };
+  const comps = [
+    { name: "カフェ ベローチェ 新橋店", rating: 3.9, reviews: 812, photos: 20 },
+    { name: "ドトールコーヒー 新橋店", rating: 3.7, reviews: 640, photos: 20 },
+    { name: "喫茶 サンプルA", rating: 4.3, reviews: 128, photos: 20 },
+    { name: "カフェ サンプルB", rating: 4.0, reviews: 96, photos: 15 }
+  ];
+  renderReport(shop, comps, "カフェ", true);
+}
+</script>
+</body>
+</html>
