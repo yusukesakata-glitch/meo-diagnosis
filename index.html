@@ -53,8 +53,8 @@ ul.points li.good::before { background:var(--blue); }
 .err { background:#fdecec; color:#a33; border-radius:10px; padding:12px; font-size:.85rem; line-height:1.6; }
 .demo-tag { display:inline-block; background:var(--gold); color:#fff; font-size:.72rem; font-weight:800; border-radius:99px; padding:3px 10px; margin-bottom:8px; }
 .actions { display:flex; gap:8px; flex-wrap:wrap; }
-@page { size: A4; margin: 10mm; }
-@media print { .noprint { display:none !important; } body { background:#fff; padding:0; font-size:12px; } .card { box-shadow:none; border:1px solid var(--border); padding:12px 14px; margin-bottom:10px; } .score-num { font-size:2.1rem; } #gmap { height:130px !important; } ul.points li { padding:5px 0 5px 22px; font-size:.8rem; } ul.points li::before { top:10px; } table { font-size:.8rem; } .metric { margin-bottom:8px; } }
+@page { size: A4; margin: 12mm; }
+@media print { .noprint { display:none !important; } body { background:#fff; padding:0; font-size:12px; } .card { box-shadow:none; border:none; border-top:2px solid var(--navy-dark); border-radius:0; padding:10px 0 4px; margin-bottom:8px; } .score-num { font-size:1.9rem; } #gmap { height:120px !important; } .bar { display:none; } .metric { margin-bottom:5px; } .metric .t { font-size:.82rem; } ul.points li { padding:4px 0 4px 16px; font-size:.82rem; border-bottom:1px solid #ddd; } ul.points li::before { content:""; left:0; top:10px; width:6px; height:6px; border-radius:0; background:#333; } table { font-size:.82rem; } th { background:none; border-bottom:1.5px solid #666; } td { border-bottom:1px solid #ddd; } tr.self td { background:none; } }
 .pac-container { border-radius: 12px; font-family: inherit; z-index: 9999; margin-top: 4px; }
 </style>
 </head>
@@ -251,18 +251,25 @@ function makePoints(shop, comps) {
   const pts = [];
   if(comps.length) {
     const avgR = comps.reduce((a, c) => a + c.reviews, 0) / comps.length;
-    const avgRate = comps.filter(c => c.rating).reduce((a, c) => a + c.rating, 0) / Math.max(1, comps.filter(c => c.rating).length);
-    if(shop.reviews < avgR) pts.push({ t: `口コミは${shop.reviews}件で、近くの競合平均（約${Math.round(avgR)}件）を下回っています。口コミが増えると、地図検索で選ばれやすくなります。`, good: false });
-    else pts.push({ t: `口コミは${shop.reviews}件で、近くの競合平均（約${Math.round(avgR)}件）を上回っています。`, good: true });
-    if(shop.rating && avgRate && shop.rating < avgRate) pts.push({ t: `評価は★${shop.rating.toFixed(1)}で、競合平均（★${avgRate.toFixed(1)}）より低めです。低評価の口コミへの返信から始めると印象が変わります。`, good: false });
-    if(shop.rating && shop.rating >= 4.2) pts.push({ t: `評価は★${shop.rating.toFixed(1)}と高水準です。この強みを投稿や写真でも見せていきましょう。`, good: true });
+    const top2 = [...comps].sort((a, b) => b.reviews - a.reviews).slice(0, 2);
+    const names = top2.map(c => `${c.name} ${c.reviews}件`).join("、");
+    pts.push({ t: `口コミは${shop.reviews}件です。近くの競合では${names}あります。`, good: shop.reviews >= avgR });
+    const rated = comps.filter(c => c.rating);
+    if(shop.rating && rated.length) {
+      const avgRate = rated.reduce((a, c) => a + c.rating, 0) / rated.length;
+      pts.push({ t: `評価は★${shop.rating.toFixed(1)}です。競合${rated.length}店の平均は★${avgRate.toFixed(1)}です。`, good: shop.rating >= avgRate });
+    }
+    const avgP = comps.reduce((a, c) => a + c.photos, 0) / comps.length;
+    pts.push({ t: `写真は${shop.photos}枚です。競合の平均は約${Math.round(avgP)}枚です。`, good: shop.photos >= avgP });
+  } else {
+    pts.push({ t: `写真は${shop.photos}枚です。`, good: shop.photos >= 10 });
   }
-  if(shop.photos < 10) pts.push({ t: `写真は${shop.photos}枚です。店内・外観・メニューなど、写真の多い店の方が見た目で選ばれやすくなります。`, good: false });
-  else pts.push({ t: `写真は${shop.photos}枚そろっています。新しい写真を定期的に足すと鮮度が保てます。`, good: true });
-  if(!shop.hasWeb) pts.push({ t: "ウェブサイトが未登録です。予約ページやSNSでもよいので登録しましょう。", good: false });
-  if(!shop.hasHours) pts.push({ t: "営業時間が未登録です。営業時間が出ていないと、来店の判断材料が欠けてしまいます。", good: false });
-  if(!shop.hasTel) pts.push({ t: "電話番号が未登録です。タップしてすぐ電話できる状態にしましょう。", good: false });
-  if(shop.rating === null) pts.push({ t: "まだ評価が付いていません。最初の口コミを集める仕組みづくりが最優先です。", good: false });
+  const missing = [];
+  if(!shop.hasHours) missing.push("営業時間");
+  if(!shop.hasTel) missing.push("電話番号");
+  if(!shop.hasWeb) missing.push("ウェブサイト");
+  if(missing.length) pts.push({ t: `${missing.join("・")}が登録されていません。`, good: false });
+  if(shop.rating === null) pts.push({ t: "まだ評価が付いていません（口コミ0件）。", good: false });
   return pts;
 }
 
@@ -286,11 +293,15 @@ function serviceBlock() {
 
 function proposalItems(shop, comps) {
   const items = [];
-  if(!shop.hasWeb || !shop.hasHours || !shop.hasTel) items.push("基本情報を整える：不足している項目（営業時間・電話番号・サイトなど）を埋め、土台を整えます");
-  if(shop.photos < 10) items.push("写真を充実させる：店内・外観・メニューなどの写真を増やし、見た目で選ばれる状態にします");
+  const missing = [];
+  if(!shop.hasHours) missing.push("営業時間");
+  if(!shop.hasTel) missing.push("電話番号");
+  if(!shop.hasWeb) missing.push("ウェブサイト");
+  if(missing.length) items.push(`初期設定パックで、未登録の基本情報（${missing.join("・")}）を入れます`);
+  if(shop.photos < 10) items.push("写真を10枚まで増やします（初期写真の投稿、または訪問撮影）");
   const avgR = comps.length ? comps.reduce((a, c) => a + c.reviews, 0) / comps.length : 0;
-  if(shop.rating === null || shop.reviews < avgR) items.push("口コミを育てる：店頭QRなどで口コミを集める導線を作り、返信対応で評価を積み上げます");
-  if(items.length < 3) items.push("最新情報を投稿し続ける：イベントや営業情報を定期的に投稿して、情報の鮮度を保ちます");
+  if(shop.rating === null || shop.reviews < avgR) items.push("店頭に口コミ用のQRカードを置き、口コミをまず10件まで増やします。返信は月額プランで代行します");
+  if(items.length < 3) items.push("最新情報の投稿（月2回から）を月額プランで継続します");
   return items.slice(0, 3);
 }
 
