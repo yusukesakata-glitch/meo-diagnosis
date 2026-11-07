@@ -97,7 +97,7 @@ ul.points li.good::before { background:var(--blue); }
 <div id="mapDummy" style="display:none;"></div>
 
 <script>
-let placesService = null, apiReady = false, currentShop = null;
+let placesService = null, apiReady = false, currentShop = null, currentComps = [], currentKw = "";
 
 function getKey() { return localStorage.getItem('map_apiKey') || ""; }
 function toggleKey() { const c = document.getElementById('keyCard'); c.style.display = c.style.display === 'none' ? 'block' : 'none'; document.getElementById('apiKeyInput').value = getKey(); }
@@ -161,10 +161,13 @@ function toShop(p) {
 function fetchCompetitors(place) {
   const kwManual = document.getElementById('kwInput').value.trim();
   const kw = kwManual || guessKeyword(place.types || []);
-  if(!kw || !place.geometry || !place.geometry.location) { renderReport(currentShop, [], kw); return; }
+  if(!kw || !place.geometry || !place.geometry.location) { currentComps = []; currentKw = kw; renderReport(currentShop, currentComps, currentKw); return; }
   placesService.nearbySearch({ location: place.geometry.location, radius: 800, keyword: kw }, (results, status) => {
     let comps = [];
     if(status === 'OK' && results) {
+      const SPECIFIC = ['night_club', 'bar', 'restaurant', 'cafe', 'bakery', 'beauty_salon', 'hair_care', 'spa', 'gym', 'meal_takeaway', 'meal_delivery', 'food', 'store', 'clothing_store', 'lodging', 'casino'];
+      const myTypes = (place.types || []).filter(t => SPECIFIC.includes(t));
+      if(myTypes.length) results = results.filter(r => (r.types || []).some(t => myTypes.includes(t)));
       comps = results.filter(r => r.place_id !== place.place_id).map(r => ({
         place_id: r.place_id, name: r.name || "", rating: (typeof r.rating === 'number') ? r.rating : null,
         reviews: r.user_ratings_total || 0, photos: (r.photos && r.photos.length) ? r.photos.length : 0
@@ -172,16 +175,16 @@ function fetchCompetitors(place) {
       comps.sort((a, b) => b.reviews - a.reviews);
       comps = comps.slice(0, 5);
       let pending = comps.length;
-      if(!pending) { renderReport(currentShop, comps, kw); return; }
+      if(!pending) { currentComps = comps; currentKw = kw; renderReport(currentShop, currentComps, currentKw); return; }
       comps.forEach(c => {
         placesService.getDetails({ placeId: c.place_id, fields: ['photos'] }, (d, st) => {
           if(st === 'OK' && d && d.photos) c.photos = d.photos.length;
-          if(--pending === 0) renderReport(currentShop, comps, kw);
+          if(--pending === 0) currentComps = comps; currentKw = kw; renderReport(currentShop, currentComps, currentKw);
         });
       });
       return;
     }
-    renderReport(currentShop, comps, kw);
+    currentComps = comps; currentKw = kw; renderReport(currentShop, currentComps, currentKw);
   });
 }
 
@@ -192,13 +195,15 @@ function guessKeyword(types) {
 }
 
 function scoreOf(shop, comps) {
-  const maxReviews = Math.max(1, ...comps.map(c => c.reviews), shop.reviews);
+  const sortedRv = comps.map(c => c.reviews).sort((x, y) => x - y);
+  const medianReviews = sortedRv.length ? sortedRv[Math.floor(sortedRv.length / 2)] : shop.reviews;
+  const benchReviews = Math.max(1, medianReviews);
   const sRating = shop.rating ? (shop.rating / 5) * 35 : 0;
-  const sReviews = Math.min(shop.reviews / maxReviews, 1) * 30;
+  const sReviews = Math.min(shop.reviews / benchReviews, 1) * 30;
   const sPhotos = Math.min(shop.photos / 10, 1) * 20;
   let infoCount = 0; if(shop.hasWeb) infoCount++; if(shop.hasTel) infoCount++; if(shop.hasHours) infoCount++; if(shop.address) infoCount++;
   const sInfo = (infoCount / 4) * 15;
-  return { total: Math.round(sRating + sReviews + sPhotos + sInfo), sRating, sReviews, sPhotos, sInfo, maxReviews };
+  return { total: Math.round(sRating + sReviews + sPhotos + sInfo), sRating, sReviews, sPhotos, sInfo };
 }
 
 function gradeOf(total) { return total >= 80 ? "とても良い" : total >= 60 ? "良い" : total >= 40 ? "改善の余地あり" : "要改善"; }
@@ -227,8 +232,8 @@ function esc(s) { return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
 function renderReport(shop, comps, kw, demo) {
   const sc = scoreOf(shop, comps);
   const pts = makePoints(shop, comps);
-  const rows = [{ ...shop, self: true }, ...comps].map(s => `
-    <tr class="${s.self ? 'self' : ''}"><td>${esc(s.name)}${s.self ? "（この店）" : ""}</td>
+  const rows = [{ ...shop, self: true }, ...comps].map((s, idx) => `
+    <tr class="${s.self ? 'self' : ''}"><td>${esc(s.name)}${s.self ? "（この店）" : ""}${s.self ? "" : ` <button class="noprint" onclick="removeComp(${idx - 1})" style="border:1px solid var(--border); background:#fff; color:var(--text-sub); border-radius:99px; font-size:.7rem; padding:2px 8px; cursor:pointer;">競合から外す</button>`}</td>
     <td>${s.rating ? "★" + s.rating.toFixed(1) : "—"}</td><td>${s.reviews}件</td><td>${s.photos}枚</td></tr>`).join("");
   const bar = (v, max) => `<div class="bar"><i style="width:${Math.min(100, max ? (v / max) * 100 : 0)}%"></i></div>`;
   document.getElementById('report').innerHTML = `
@@ -259,6 +264,8 @@ function renderReport(shop, comps, kw, demo) {
   </div>`;
   document.getElementById('report').scrollIntoView({ behavior: 'smooth' });
 }
+
+function removeComp(i) { currentComps.splice(i, 1); renderReport(currentShop, currentComps, currentKw); }
 
 function runDemo() {
   const shop = { name: "カフェ サンプル 新橋店", address: "東京都港区新橋2-0-0", rating: 3.8, reviews: 42, photos: 8, hasHours: true, hasWeb: false, hasTel: true, url: "", types: ["cafe"], lat: null, lng: null };
