@@ -119,6 +119,9 @@ async function initApi() {
 }
 initApi();
 
+function normStr(x) { return (x || "").toLowerCase().replace(/[\s　・]/g, ""); }
+function similarName(a, b) { const x = normStr(a), y = normStr(b); return !!x && !!y && (y.includes(x) || x.includes(y)); }
+
 function searchShop() {
   clearErr();
   const name = document.getElementById('shopName').value.trim();
@@ -126,12 +129,37 @@ function searchShop() {
   if(!name) { showErr("店名を入れてください。"); return; }
   if(!apiReady) { showErr("APIキーが読み込めていません。右上の「APIキー設定」からキーを保存してください。"); return; }
   const btn = document.getElementById('searchBtn'); btn.disabled = true; btn.textContent = "検索中…";
-  placesService.findPlaceFromQuery({ query: `${name} ${area}`, fields: ['place_id', 'name', 'formatted_address'] }, (results, status) => {
+  document.getElementById('reportArea').innerHTML = "";
+  const q = `${name} ${area}`;
+  const found = new Map();
+  const collect = (results) => (results || []).forEach(r => { if(r.place_id && !found.has(r.place_id)) found.set(r.place_id, r); });
+  const finish = () => {
     btn.disabled = false; btn.textContent = "診断する";
-    if(status !== 'OK' || !results || !results.length) { showErr("店が見つかりませんでした。店名やエリアを変えて試してください。"); return; }
+    const list = [...found.values()];
+    list.sort((a, b) => (similarName(b.name, name) - similarName(a.name, name)) || ((b.user_ratings_total || 0) - (a.user_ratings_total || 0)));
     const area2 = document.getElementById('candArea');
-    area2.innerHTML = results.slice(0, 5).map(r => `<div class="cand" onclick="pickShop('${r.place_id}')"><div class="nm">${esc(r.name)}</div><div class="ad">${esc(r.formatted_address || "")}</div></div>`).join("");
+    if(!list.length) { area2.innerHTML = ""; renderNotFound(name, area); return; }
+    area2.innerHTML = list.slice(0, 12).map(r => `<div class="cand" onclick="pickShop('${r.place_id}')"><div class="nm">${esc(r.name)}</div><div class="ad">${esc(r.formatted_address || "")}</div></div>`).join("")
+      + `<div style="text-align:center; margin-top:10px;" class="noprint"><button class="noprint" onclick="renderNotFound('${esc(name).replace(/'/g, "")}', '${esc(area).replace(/'/g, "")}')" style="border:1px solid var(--border); background:#fff; color:var(--text-sub); border-radius:99px; font-size:.78rem; padding:7px 14px; cursor:pointer;">この中にない（Google未登録かも）</button></div>`;
+  };
+  placesService.findPlaceFromQuery({ query: q, fields: ['place_id', 'name', 'formatted_address'] }, (r1) => {
+    collect(r1);
+    placesService.textSearch({ query: q }, (r2) => { collect(r2); finish(); });
   });
+}
+
+function renderNotFound(name, area) {
+  document.getElementById('reportArea').innerHTML = `<div class="card">
+    <div style="font-size:1.25rem; font-weight:800; color:var(--navy-dark); margin-bottom:8px;">Googleマップで見つかりませんでした</div>
+    <p style="font-size:.92rem; line-height:1.8;">「${esc(name)}」${area ? `（${esc(area)}）` : ""}に一致する店は、Googleの公開情報に見つかりませんでした。</p>
+    <div style="font-size:.9rem; line-height:1.9; margin-top:8px;">
+      <p>・Googleビジネスプロフィールが<b>未登録の可能性</b>があります。その場合、お客さんがGoogleマップで探しても、この店は表示されません</p>
+      <p>・別の表記で登録されていることもあります。看板や公式の正式表記でもう一度探してみてください</p>
+      <p>・店名欄に住所を入れて探すこともできます</p>
+    </div>
+    <p style="font-size:.92rem; line-height:1.8; margin-top:12px; background:var(--blue-bg); border-radius:12px; padding:12px 14px;">未登録であれば、まず登録するところからが提案になります（初期設定パックの対象です）。</p>
+  </div>`;
+  document.getElementById('reportArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function pickShop(placeId) {
